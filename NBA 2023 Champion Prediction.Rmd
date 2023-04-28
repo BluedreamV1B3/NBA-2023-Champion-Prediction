@@ -1,0 +1,1357 @@
+---
+title: "NBA 2023 Champion Prediction"
+author: "Ma"
+date: "2023-04-22"
+output: html_document
+
+---
+
+## 1. Executive Summary
+
+I'm working on a fun project called "NBA 2023 Champion Prediction". Basically, I'm using historical data and machine learning to try and figure out which NBA team is most likely to win the championship in 2023.
+
+The NBA is so popular, and people love making predictions about which team will come out on top. So, I'm using historical regular season team stats, game results, and other data to train machine learning models that can predict the number of wins of each team in the playoffs. The team winning the most games in the 2023 playoff will be the championship.
+
+It's interesting  to see how accurate my predictions are, and I will buy sports lottery tickets according to my prediction.
+
+## 2. Data Introduction
+
+For this project, I scraped NBA regular season data from the website https://www.basketball-reference.com/. The website provides a comprehensive collection of NBA statistics, game results, and player information from past seasons.
+
+I collected data for the 2000 - 2023 NBA regular seasons. The data includes information on team statistics, game results, and other relevant metrics such as team standings, player awards, and playoff results.
+
+Overall, the data collected from basketball-reference.com provides a rich and diverse set of features that are essential for accurate prediction of NBA team performance.
+
+## 3. Libraries
+
+```{r}
+library(rvest)
+library(tidyverse)
+library(stringr)
+library(DataExplorer)
+library(corrplot)
+library(ranger)
+library(janitor)
+library(caret)
+library(randomForest)
+library(xgboost)
+```
+
+## 4. Web Scraping
+
+* regular season
+
+Division Standings East
+
+```{r eval=FALSE}
+division_total_E <- data.frame()
+
+# Loop through the years from 2000 to 2023
+for (year in 2000:2023) {
+  # Specify the URL for each year
+  url <- paste0("https://www.basketball-reference.com/leagues/NBA_", year, ".html")
+  
+  # Read the HTML code from the page
+  html <- read_html(url)
+  
+  # Extract the Per Game Stats table using CSS selector
+  division_standings_E <- html %>% 
+    html_nodes("#divs_standings_E") %>% 
+    html_table() %>% 
+    as.data.frame()
+  # Rename the columns of the data frame
+  colnames(division_standings_E) <- c("Eastern_Conference", "W", "L", "W/L_percent", "GB", "PS/G", "PA/G", "SRS")
+  # Add a "Year" column to the dataframe and store the data
+  division_standings_E$Year <- year
+  division_total_E <- bind_rows(division_total_E , division_standings_E)
+}
+
+# View the data
+division_total_E
+```
+
+Division Standings West
+
+```{r eval=FALSE}
+division_total_W <- data.frame()
+
+# Loop through the years from 2000 to 2023
+for (year in 2000:2023) {
+  # Specify the URL for each year
+  url <- paste0("https://www.basketball-reference.com/leagues/NBA_", year, ".html")
+  
+  # Read the HTML code from the page
+  html <- read_html(url)
+  
+  # Extract the Per Game Stats table using CSS selector
+  division_standings_W <- html %>% 
+    html_nodes("#divs_standings_W") %>% 
+    html_table() %>% 
+    as.data.frame()
+  # Rename the columns of the data frame
+  colnames(division_standings_W) <- c("Western_Conference", "W", "L", "W/L_percent", "GB", "PS/G", "PA/G", "SRS")
+  # Add a "Year" column to the dataframe and store the data
+  division_standings_W$Year <- year
+  division_total_W <- bind_rows(division_total_W , division_standings_W)
+}
+
+# View the data
+division_total_W
+```
+
+Per Game Stats
+
+```{r eval=FALSE}
+# Create an empty dataframe to store the data
+pergame_stats_total <- data.frame()
+
+# Loop through the years from 2000 to 2023
+for (year in 2000:2023) {
+  # Specify the URL for each year
+  url <- paste0("https://www.basketball-reference.com/leagues/NBA_", year, ".html")
+  
+  # Read the HTML code from the page
+  html <- read_html(url)
+  
+  # Extract the Per Game Stats table using CSS selector
+  per_game_stats <- html %>%
+    html_nodes("#per_game-team") %>%
+    html_table() %>% 
+    as.data.frame()
+  
+  # Rename the columns of the data frame
+  colnames(per_game_stats) <- c("Rk", "Team", "G", "MP", "FG", "FGA", "FG_Percent", "3P", "3PA", "3P_Percent", "2P", "2PA", "2P_Percent", "FT", "FTA", "FT_Percent", "ORB", "DRB", "TRB", "AST", "STL", "BLK", "TOV", "PF", "PTS")
+  
+  # Add a "Year" column to the dataframe and store the data
+  per_game_stats$Year <- year
+  pergame_stats_total <- bind_rows(pergame_stats_total, per_game_stats)
+}
+
+# View the data
+pergame_stats_total
+```
+
+Advanced Stats
+
+```{r eval=FALSE}
+# Create an empty dataframe to store the data
+advanced_stats_total <- data.frame()
+
+# Loop through the years from 2000 to 2023
+for (year in 2000:2023) {
+  # Specify the URL for each year
+  url <- paste0("https://www.basketball-reference.com/leagues/NBA_", year, ".html")
+  
+  # Read the HTML code from the page
+  html <- read_html(url)
+  
+  # Extract the Per Game Stats table using CSS selector
+  advanced_stats <- html %>%
+    html_nodes("#advanced-team") %>%
+    html_table() %>% 
+    as.data.frame()
+  
+  # Rename the columns of the data frame
+  colnames(advanced_stats) <- c("Rk", "Team", "Age", "W", "L", "PW", "PL", "MOV", "SOS", "SRS", "OPtg", "DRtg", "NRtg", "Pace", "FTr", "3PAr", "TS_percent", "eFG_percent_offense", "TOV_percent_offense", "ORB_percent", "FT/FGA_offense", "eFG_percent_defense", "TOV_percent_defense", "DRB_percent", "FT/FGA_defense", "Arena", "Attend", "Attend/G")
+  
+  # Add a "Year" column to the dataframe and store the data
+  advanced_stats$Year <- year
+  advanced_stats_total <- bind_rows(advanced_stats_total, advanced_stats)
+}
+
+# View the data
+advanced_stats_total
+```
+
+* playoffs
+
+advanced stats
+
+```{r eval=FALSE}
+WL_playoff_total <- data.frame()
+
+for (year in 2000:2023){
+  # Specify the URL for each year
+  url <- paste0("https://www.basketball-reference.com/playoffs/NBA_", year, ".html")
+  
+  # Read the HTML code from the page
+  html <- read_html(url)
+  
+  # Extract the Per Game Stats table using CSS selector
+  WL_playoff <- html %>%
+    html_nodes("#advanced-team") %>%
+    html_table() %>% 
+    as.data.frame()
+  
+# Rename the columns of the data frame
+  colnames(WL_playoff) <- c("Rk", "Team", "Age", "W", "L", "WL_percent", "PW", "PL", "OPtg", "DRtg", "NRtg", "Pace", "FTr", "3PAr", "TS_percent", "eFG_percent_offense", "TOV_percent_offense", "ORB_percent", "FT/FGA_offense", "eFG_percent_defense", "TOV_percent_defense", "DRB_percent", "FT/FGA_defense")  
+  
+# Add a "Year" column to the dataframe and store the data
+  WL_playoff$Year <- year
+  WL_playoff_total <- bind_rows(WL_playoff_total, WL_playoff)
+}
+```
+
+```{r eval=FALSE}
+#writing the data I scraped into excel
+write.csv(division_total_E, "C:/Users/PC/Documents/BA/R Data Science/More Cases/2023 NBA Prediction/division_total_E.csv")
+write.csv(division_total_W, "C:/Users/PC/Documents/BA/R Data Science/More Cases/2023 NBA Prediction/division_total_W.csv")
+write.csv(pergame_stats_total, "C:/Users/PC/Documents/BA/R Data Science/More Cases/2023 NBA Prediction/pergame_stats_total.csv")
+write.csv(advanced_stats_total, "C:/Users/PC/Documents/BA/R Data Science/More Cases/2023 NBA Prediction/advanced_stats_total.csv")
+write.csv(WL_playoff_total, "C:/Users/PC/Documents/BA/R Data Science/More Cases/2023 NBA Prediction/WL_playoff_total.csv")
+```
+
+## 5. Read file into R
+
+```{r}
+path = "C:/Users/PC/Documents/BA/R Data Science/More Cases/2023 NBA Prediction/"
+#Read in eaah dataset
+division_total_E <- read_csv(paste0(path, "division_total_E.csv"))
+division_total_W <- read_csv(paste0(path, "division_total_W.csv"))
+pergame_stats_total <- read_csv(paste0(path, "pergame_stats_total.csv"))
+advanced_stats_total <- read_csv(paste0(path, "advanced_stats_total.csv"))
+WL_playoff_total <- read_csv(paste0(path, "WL_playoff_total.csv"))
+```
+
+Make a copy of each dataset and I will edit on the copies. 
+
+```{r}
+division_E <- division_total_E
+division_W <- division_total_W
+pergame <- pergame_stats_total
+advanced <- advanced_stats_total
+playoff <- WL_playoff_total
+head(division_E)
+head(division_W)
+head(pergame)
+head(advanced)
+head(playoff)
+```
+
+## 6. Data Cleaning
+
+* division_E & division_W
+
+1. Remove the row with unuseful value, including "Central Division", "Atlantic Division", "Southeast Division", "Midwest Division", ""Pacific Division", "Southwest Division", and "Northwest Division".
+
+2. GB :"Games behind" is a term used in the NBA standings to indicate the difference in the number of games won and lost between two teams. It represents the distance between a team's position in the standings and the team that is currently leading the division or conference. The teams with "-" value of "GB" means they ranked #1 of their divisions in the regular season that year so I will replace the value with 0. 
+
+3. There are some values in the "Eastern_Conference" column contain "star". The teams with "star" mean they made for the playoff that year. However, I don't need that information so I am going to remove "*".
+
+4. Drop the row id column.
+
+```{r}
+#Remove the row with unuseful value
+division_E <- division_E %>% 
+  filter(!Eastern_Conference %in% c("Central Division", "Atlantic Division", "Southeast Division"))
+division_W <- division_W %>% 
+  filter(!Western_Conference %in% c("Midwest Division", "Pacific Division", "Southwest Division", "Northwest Division"))
+#Replacing "-" with 0 in GB column
+division_E$GB <- ifelse(division_E$GB == "—", 0, division_E$GB)
+division_W$GB <- ifelse(division_W$GB == "—", 0, division_W$GB)
+#Remove "*" in Eastern_Conference and Western_Conference
+Eastern_Conference_clean <- division_E$Eastern_Conference %>%
+  str_remove_all(fixed("*"))
+division_E <- division_E %>% 
+  mutate(Eastern_Conference = Eastern_Conference_clean)
+
+Western_Conference_clean <- division_W$Western_Conference %>% 
+  str_remove_all(fixed("*"))
+division_W <- division_W %>% 
+  mutate(Western_Conference = Western_Conference_clean)
+
+#I don't need the row id column
+division_E <- division_E[,-1]
+division_W <- division_W[,-1]
+
+head(division_E)
+head(division_W)
+```
+
+* pergame
+
+1. Drop the "League Average" value in "Team" column.
+
+2. There are some values in the "Team" column contain "star". The teams with "star" mean they made for the playoff that year. However, I don't need that information so I am going to remove "*".
+
+3. Drop the row id column.
+
+```{r}
+#Remove the row with unuseful value
+pergame <- pergame %>% 
+  filter(!Team %in% "League Average")
+#Remove "*" in Team
+team_clean <- pergame$Team %>% 
+  str_remove_all(fixed("*"))
+pergame <- pergame %>% 
+  mutate(Team = team_clean)
+
+#I don't need the row id column
+pergame <- pergame[,-1]
+
+head(pergame)
+```
+
+* advanced
+
+1. The table format is incorrect in some columns so I have to fix it first.
+
+2. Remove the row with unuseful value.
+
+3. There are some values in the "Team" column contain "star". The teams with "star" mean they made for the playoff that year. However, I don't need that information so I am going to remove "*".
+
+4. Drop the row id column.
+
+```{r}
+#Fixing the columns
+advanced <- subset(advanced, select = -c(eFG_percent_offense, TOV_percent_defense, `Attend/G`))
+colnames(advanced)[19:29] <- c("eFG_percent_offense", "TOV_percent_offense", "ORB_percent", "FT/FGA_offense", "eFG_percent_defense", "TOV_percent_defense", "DRB_percent", "FT/FGA_defense", "Arena", "Attend", "Attend/G")
+
+#Remove the row with unuseful value
+advanced <- advanced %>% 
+  filter(!Team %in% "Team")
+
+#Remove "*" in Team
+team_clean <- advanced$Team %>% 
+  str_remove_all(fixed("*"))
+advanced <- advanced %>% 
+  mutate(Team = team_clean)
+
+#I don't need the row id column
+advanced <- advanced[,-1]
+
+#Removing comma in "Attend" and "Attend/G"
+clean_strings_attend <- gsub(",", "", advanced$Attend)
+clean_strings_attendG <- gsub(",", "", advanced$`Attend/G`)
+advanced <- advanced %>% 
+  mutate(Attend = clean_strings_attend,
+         `Attend/G` = clean_strings_attendG)
+head(advanced)
+```
+
+* playoff
+
+1. Only keep the columns I need. "W"(wins in playoffs) as my dependent variable(Y). "Team" and "Year" as foregin keys. 
+
+2. Remove the row with unuseful value. 
+
+3. Drop the values in 2023 because this is what we going to predict. 
+
+```{r}
+#Keeping "W", "Team" and "Year.
+playoff <- playoff[,c(3,5,27)]
+
+#Remove the row with unuseful value
+playoff <- playoff %>% 
+  filter(!Team %in% c("Tm", "League Average", "Team"))
+
+##Drop 2023
+playoff <- playoff %>% 
+  filter(!Year %in% 2023)
+
+head(playoff)
+```
+
+More cleaning...
+
+```{r}
+#Some strange number in values of "Eastern_Conference" and "Western_Conference" in the year 2023.
+division_E %>% 
+  filter(Year %in% 2023) %>% 
+  head()
+
+division_W %>% 
+  filter(Year %in% 2023) %>% 
+  head()
+
+#Remove the pattern "(number)" using gsub()
+clean_strings_E <- gsub("\\s*\\(\\d+\\)\\s*", "", division_E$Eastern_Conference)
+division_E <- division_E %>% 
+  mutate(Eastern_Conference = clean_strings_E)
+
+clean_strings_W <- gsub("\\s*\\(\\d+\\)\\s*", "", division_W$Western_Conference)
+division_W <- division_W %>% 
+  mutate(Western_Conference = clean_strings_W)
+#Remove trail space
+division_E$Eastern_Conference <- str_trim(division_E$Eastern_Conference)
+division_W$Western_Conference <- str_trim(division_W$Western_Conference)
+
+
+table(division_E$Eastern_Conference)
+length(table(division_E$Eastern_Conference))
+table(division_E$Year)
+
+table(division_W$Western_Conference)
+length(table(division_W$Western_Conference))
+table(division_W$Year)
+
+```
+
+There were 15 teams every year in the NBA East division and 14 or 15 teams in the West division but there were 18 teams and 19 teams in history, separately. The reason is that some teams changed their names over time.
+
+## 7. Data Prearation
+
+### 7.1 Merging Data
+
+1. Change the names of "W" column in the playoff dataset.
+
+2. Create a "performance" column in the playoff dataset. 
+
+3. Create a "division" column in division_E and division_W
+
+4. Change the name of "Western_Conference" column and "Eastern_Conference"
+
+```{r}
+#Give the dependent variable a new name
+colnames(playoff)[2] <- "wins_playoff"
+
+#Create a column to distinguish teams that made to the playoff, teams that did not make the playoffs and teams that won the champion. 
+playoff$performance <- ""
+playoff$wins_playoff <- as.numeric(playoff$wins_playoff)
+playoff$performance <- ifelse((playoff$wins_playoff == 15 & playoff$Year == 2000:2002) | (playoff$wins_playoff == 16), "champion", "playoff")
+head(playoff)
+
+#Create a column of division
+division_E$division <- "E"
+division_W$division <- "W"
+
+#Change the names of columns
+colnames(division_E)[1] <- "conference"
+colnames(division_W)[1] <- "conference"
+```
+
+* create a "division" column in division_E and division_W
+
+```{r}
+division_E$division <- "E"
+division_W$division <- "W"
+```
+
+Start merging each dataset
+
+```{r}
+#binding division_E and division_W 
+division_total <- rbind(division_E, division_W)
+#changing the column name "conference" into "Team"
+colnames(division_total)[1] <- "Team"
+#Drop the duplicate columns that another dataset already have
+division_total <- subset(division_total, select = -c(W, L, SRS))
+#joining advanced with pergame
+regular_season <- pergame %>% 
+  left_join(advanced, by = c("Team", "Year"), suffix = c("_pergame", "_advanced")) %>% 
+  left_join(division_total, by = c("Team", "Year"))
+#joining playoff with regular_season
+data <- regular_season %>% 
+  left_join(playoff, by = c("Team", "Year"))
+#Give those who fail to make to the playoff that year a "fail" value in the column "performance" 
+data$performance <- ifelse(is.na(data$performance) == T, "fail", data$performance)
+#Give a better name to column "W" and "L", which mean wins and loses in regular seasons
+colnames(data)[29] <- "wins_regular"
+colnames(data)[30] <- "loses_regular"
+
+dim(data)
+```
+
+### 7.2 Factorizing variables
+
+Columns that should be numeric
+
+```{r}
+#Columns that should remain character
+which(names(data) %in% c("Team", "Arena", "division", "performance"))
+# specify the column indices to convert to numeric
+numeric_cols <- setdiff(seq_along(data), c(2, 51, 58, 60))
+# convert to numeric
+data[, numeric_cols] <- apply(data[, numeric_cols], 2, as.numeric)
+```
+
+Columns that should be factors
+
+```{r}
+data$division <- as.factor(data$division)
+data$performance <- as.factor(data$performance) 
+```
+
+The goal is to predict the 2023 NBA champion.
+
+```{r}
+nba_2023 <- data %>% 
+  filter(Year == 2023) %>% 
+  select(-performance)
+
+data <- data %>% 
+  filter(!Year %in% 2023)
+```
+
+## 8. Exploratory Data Analysis
+
+```{r eval=FALSE}
+#create_report(data)
+```
+
+**Note : I will keep the "performance" column for EDA but I won't use it later in modeling because we only know the champion "after" the whole season is over.** 
+
+### 8.1 The response variable : wins_playoff
+
+```{r}
+summary(data$wins_playoff)
+data %>% 
+  count(wins_playoff) %>% 
+  ggplot(aes(wins_playoff, n)) +
+  geom_col(fill = "slateblue") +
+  labs(title = "Distribution of wins in playoff", 
+       x = "wins", y = "count") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 13), 
+        axis.title=element_text(size=8)) +
+   theme(panel.background = element_rect(fill='white'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank())+
+   geom_text(aes(label = n), size = 3, vjust = -0.8, color = "black") +
+  ylim(0,60)
+```
+
+We can see that the distribution is skewed. This is simply because most of the teams lose in the first round of 16 to 8 matches.
+
+### 8.2 Some interesting facts in regular seasons from 2000 to 2023
+
+* FG_Percent : Field goals percentage per game
+
+```{r}
+data %>% 
+  group_by(Year, performance) %>% 
+  summarise(mean_FG_percent = mean(FG_Percent)) %>% 
+  ggplot(aes(Year, mean_FG_percent, group = performance, color =performance)) +
+  geom_point() +
+  geom_line()+
+  labs(title = "Evolution of Average Field Goals Percentage per game in Regular Season", 
+       x = "Year", y = "Field Goals Percentage") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 13), 
+        axis.title=element_text(size=8)) +
+   theme(panel.background = element_rect(fill='white'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank())+
+  theme(legend.position = c(0.13, 0.8),
+        legend.background = element_rect(fill = "white", color = "black"))
+```
+
+Not surprisingly, playoff teams have a much higher field goal percentage than non-playoff teams on average.
+
+* 3P : 3-Point field goals
+
+* 3PA : 3-Point field goals attempt
+
+* 3P_Percent : 3-Point field foals percentage
+
+```{r}
+data %>% 
+  group_by(Year, performance) %>% 
+  summarise(mean_3P = mean(`3P`)) %>% 
+  ggplot(aes(Year, mean_3P, group = performance, color =performance)) +
+  geom_point() +
+  geom_line()+
+  labs(title = "Evolution of Average 3-Point Field Goals per game in Regular Season", 
+       x = "Year", y = "3-Point Field Goals") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 12), 
+        axis.title=element_text(size=8)) +
+   theme(panel.background = element_rect(fill='white'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank())+
+  theme(legend.position = c(0.13, 0.8),
+        legend.background = element_rect(fill = "white", color = "black"))
+
+data %>% 
+  group_by(Year, performance) %>% 
+  summarise(mean_3PA = mean(`3PA`)) %>% 
+  ggplot(aes(Year, mean_3PA, group = performance, color =performance)) +
+  geom_point() +
+  geom_line()+
+  labs(title = "Evolution of Average 3-Point Field Goals Attempts per game in Regular Season", 
+       x = "Year", y = "3-Point Field Goals Attempts") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 12), 
+        axis.title=element_text(size=8)) +
+   theme(panel.background = element_rect(fill='white'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank())+
+  theme(legend.position = c(0.13, 0.8),
+        legend.background = element_rect(fill = "white", color = "black"))
+
+data %>% 
+  group_by(Year, performance) %>% 
+  summarise(mean_3P_Percent = mean(`3P_Percent`)) %>% 
+  ggplot(aes(Year, mean_3P_Percent, group = performance, color =performance)) +
+  geom_point() +
+  geom_line()+
+  labs(title = "Evolution of Average 3-Point Field Goals Percentage per game in Regular Season", 
+       x = "Year", y = "3-Point Field Goals Percentage") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 12), 
+        axis.title=element_text(size=8)) +
+   theme(panel.background = element_rect(fill='white'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank())+
+  theme(legend.position = c(0.13, 0.8),
+        legend.background = element_rect(fill = "white", color = "black"))
+```
+
+We can see that both 3-Point Field Goals and 3-Point Field Goals Attempt have increased over time, and teams that make it to the playoffs tend to make and attempt more 3-point shots during the regular season compared to teams that do not make the playoffs. Besides, Several peaks in the 3-Point Field Goals Percentage chart were created by the Golden State Warriors, including the regular season before the Warriors won the championship in 15, 17, 18 and 22 years. Insane Field goal percentage!
+
+* 2PA : 2-Point field goals attempt
+
+```{r}
+data %>% 
+  group_by(Year, performance) %>% 
+  summarise(mean_2PA = mean(`2PA`)) %>% 
+  ggplot(aes(Year, mean_2PA, group = performance, color =performance)) +
+  geom_point() +
+  geom_line()+
+  labs(title = "Evolution of Average 2-Point Field Goals Attempt per game in Regular Season", 
+       x = "Year", y = "2-Point Field Goals Attempt") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 12), 
+        axis.title=element_text(size=8)) +
+   theme(panel.background = element_rect(fill='white'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank())+
+  theme(legend.position = c(0.13, 0.3),
+        legend.background = element_rect(fill = "white", color = "black"))
+```
+
+Interestingly, the number of 2-point attempts by teams decreased significantly over time, and teams that made the playoffs took fewer 2-point shots than teams that did not make the playoffs. This should be because strong teams focus their offense on shooting three-pointers. The lowest point for two-point field goal attempts among championship teams was the Warriors' performance during the 2021 season.
+
+* PTS : Points
+
+```{r}
+data %>% 
+  group_by(Year, performance) %>% 
+  summarise(mean_PTS = mean(`PTS`)) %>% 
+  ggplot(aes(Year, mean_PTS, group = performance, color =performance)) +
+  geom_point() +
+  geom_line()+
+  labs(title = "Evolution of Points per game in Regular Season", 
+       x = "Year", y = "Points") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 12), 
+        axis.title=element_text(size=8)) +
+   theme(panel.background = element_rect(fill='white'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank())+
+  theme(legend.position = c(0.13, 0.8),
+        legend.background = element_rect(fill = "white", color = "black"))
+```
+
+## 9. Preparing data for modeling
+
+Goal : Predict 2023 NBA champion using "nba_2023" as input. The "wins_playoff" will be the dependent variable(Y), and the teams with most wins will be the champion in prediction. The final independent variables(X) will be selected later using various methods. 
+
+```{r}
+nba_2023 <- as.data.frame(nba_2023)
+#Convert column "Team" to row index.
+rownames(nba_2023) <- nba_2023$Team
+#We don't need column "Team" and "Arena"
+nba_2023 <- nba_2023 %>% select(-c(Team,Arena))
+```
+
+There are NAs in "Attend" and "Attend/G" column, and because the correlation between those features and "wins_playoff" are low, I decide to drop them.
+
+```{r}
+cor(data$Attend, data$wins_playoff,use="pairwise.complete.obs")
+cor(data$`Attend/G`, data$wins_playoff,use="pairwise.complete.obs")
+
+nba_2023 <- nba_2023 %>% select(-c(Attend, `Attend/G`))
+data <- data %>% select(-c(Attend, `Attend/G`))
+```
+
+I only need the teams that made to the playoffs each year, and I don't need the "performance", "Team" and "Arena"(Having too much levels) column.
+
+```{r}
+data <- data %>% 
+  filter(performance %in% c("champion", "playoff")) %>% 
+  select(-c(performance,Arena))
+```
+
+Cleaning columns' names
+
+```{r}
+data <- clean_names(data)
+nba_2023 <- clean_names(nba_2023)
+```
+
+### 9.1 Feature Selection
+
+Create a copy of data before feature selection
+
+```{r}
+data <- as.data.frame(data)
+rownames(data) <- paste0(data$team, data$year)
+data_2 <- data
+```
+
+* Finding variable importance with a quick Random Fores
+
+```{r}
+set.seed(1234)
+quick_rf <- randomForest(x=data[,-56], y=data$wins_playoff, ntree=500, importance = T)
+important <- round(importance(quick_rf), 2)
+
+imp_DF <- data.frame(Variables = row.names(important), MSE = important[,1])
+imp_DF <- imp_DF[order(imp_DF$MSE, decreasing = TRUE),]
+ggplot(imp_DF[1:20,], aes(x=reorder(Variables, MSE), y=MSE, fill=MSE)) + geom_bar(stat = 'identity') + labs(x = 'Variables', y= '% increase MSE if variable is randomly permuted') + coord_flip() + theme(legend.position="none")
+```
+
+Choose features having percent increase MSE higher than 5
+
+```{r}
+rf_features <- imp_DF %>% filter(MSE >5)
+rf_features <- rf_features$Variables
+```
+
+* Find variables having higher than 0.5 correlation with "wins_playoff"
+
+```{r}
+numericVars <- which(map(data, is.numeric) == T)#index vector numeric variables
+numericVarNames <- names(numericVars)#saving names vector for use later on
+cat('There are', length(numericVars), 'numeric variables')
+```
+
+```{r}
+#find correlations of all numeric variables
+data_numVar <- data[, numericVars]
+cor_numVar <- cor(data_numVar, use="pairwise.complete.obs")#pairwise.complete.obs uses the non-NA values when calculating the correlation. 
+
+#sort on decreasing correlations with SalePrice
+cor_sorted <- as.matrix(sort(cor_numVar[,'wins_playoff'], decreasing = TRUE))
+
+#select only high correlations with SalePrice(correlation>0.5)
+CorHigh <- names(which(apply(cor_sorted, 1, function(x) abs(x)>0.5)))                             
+cor_numVar <- cor_numVar[CorHigh, CorHigh]
+
+#visiualization
+corrplot.mixed(cor_numVar, tl.col = "black", tl.pos = "lt")
+```
+
+**It also becomes clear that multicollinearity is an issue when using some algorithms.**
+
+```{r}
+data <- data %>% 
+  select(c(rf_features, CorHigh, wins_playoff, year))
+nba_2023 <- nba_2023 %>% 
+  select(c(rf_features, CorHigh, wins_playoff))
+```
+
+## 10. Modeling
+
+I will use different training data to train models and test them on the same test set(year 2022). 
+
+### 10.1 Randomforest with training data in year 2000 to 2021
+
+Composing training and testing sets
+
+```{r}
+training = data %>% filter(!year %in% 2022)
+testing = data %>% filter(year %in% 2022)
+#I don't need the "year" column when building models
+training <- training[,-14]
+testing <- testing[,-14]
+dim(training)
+dim(testing)
+```
+
+#### 10.1.1 rf1
+
+rf1 : Basic RF
+
+```{r}
+set.seed(1234)
+rf1 <- randomForest(wins_playoff~., data = training, importance = T)
+rf1
+plot(rf1)
+#The number of trees that minimize the MSE.
+which.min(rf1$mse)
+#The RMSE of the most suitable random forest is (the error value of the average Sale_Price):
+sqrt(rf1$mse[which.min(rf1$mse)])
+save(rf1, file = "model.Rdata.rf1")
+```
+
+```{r}
+load(file = "model.Rdata.rf1")
+```
+
+Finding Variable importance
+
+```{r}
+round(importance(rf1), 2)
+important <- importance(rf1)
+imp_DF <- data.frame(Variables = row.names(important), MSE = important[,1])
+imp_DF <- imp_DF[order(imp_DF$MSE, decreasing = TRUE),]
+ggplot(imp_DF, aes(x=reorder(Variables, MSE), y=MSE, fill=MSE)) + geom_bar(stat = 'identity') + labs(x = 'Variables', y= '% increase MSE if variable is randomly permuted') + coord_flip() + theme(legend.position="none")
+```
+
+rf1 prediction
+
+```{r}
+prediction_rf1 <- predict(rf1, testing[, -12])
+rf1_MSE <- mean((prediction_rf1 - testing$wins_playoff)^2)
+rf1_RMSE <- sqrt(rf1_MSE)
+```
+
+#### 10.1.2 rf2 
+
+Tuning
+
+* tuneRF
+
+Finding best mtry
+
+```{r}
+# Filter out predictor variable names
+features <- setdiff(x = names(training), y = "wins_playoff")
+set.seed(123)
+RF_tune <- tuneRF(x = training[features], y = training$wins_playoff, mtryStart = 1, ntreeTry = 5000, trace = FALSE)
+
+RF_tune
+```
+
+Best mtry is 1.
+
+* ranger
+ 
+```{r}
+# hyperparameter grid search
+hyper_grid <- expand.grid(
+  mtry = seq(1, 10, by = 1),
+  node_size = seq(1, 9, by = 1),
+  sample_size = c(0.55, 0.632, 0.7, 0.8),
+  OOB_RMSE = 0
+)
+
+# total number of combinations
+nrow(hyper_grid)
+```
+ 
+```{r}
+for (i in 1:nrow(hyper_grid)) {
+  # train model
+  ranger_tune <- ranger(
+    formula = wins_playoff ~ .,
+    data = training,
+    num.trees = 500, 
+    mtry = hyper_grid$mtry[i],
+    min.node.size = hyper_grid$node_size[i], 
+    sample.fraction = hyper_grid$sample_size[i],
+    seed = 123
+  )
+
+  # 並將每一此訓練模型的OOB RMSE萃取儲存
+  hyper_grid$OOB_RMSE[i] <- sqrt(ranger_tune$prediction.error)
+}
+
+# 我們將結果依序OOB_RMSE由小至大排列，取模型成效前十名印出
+hyper_grid %>% 
+  dplyr::arrange(OOB_RMSE) %>% 
+  head(10)
+```
+
+1. OOB_RMSE falls roughly around 3 games. 
+
+2. The optimal value of mtry falls in all 5~10 range intervals. Indicates that mtry does not have much impact on OOB_RMSE in this interval.
+
+3. The number of optimal minimum node observations falls in the range of 7 to 9.
+
+4. The optimal sampling ratio is about 0.55.
+
+We repeat the model of this parameter setting 100 times to calculate the expected value of the error rate of this model.
+
+```{r}
+OOB_RMSE_ranger <- vector(mode = "numeric", length = 100)
+
+for(i in 1:length(OOB_RMSE_ranger)){
+  optimal_ranger <- ranger(
+    formula         = wins_playoff ~ ., 
+    data            = training, 
+    num.trees       = 500,
+    mtry            = 7,
+    min.node.size   = 8,
+    sample.fraction = 0.55,
+    importance      = 'impurity'
+  )
+
+  OOB_RMSE_ranger[i] <- sqrt(optimal_ranger$prediction.error)
+}
+
+hist(OOB_RMSE_ranger, breaks = 20)
+```
+
+* Build rf2 using parameters above 
+
+```{r}
+rf2 <- ranger(
+  formula = wins_playoff ~ .,
+    data = training,
+    num.trees = 500,
+    mtry = 7,
+    min.node.size = 8,
+    sample.fraction = 0.55,
+    seed = 123
+)
+save(rf2, file = "model.Rdata.rf2")
+```
+
+```{r}
+load(file = "model.Rdata.rf2")
+```
+
+rf2 prediction
+
+```{r}
+prediction_rf2 <- predict(rf2, testing[,-12])
+prediction_rf2 <- prediction_rf2$predictions
+rf2_MSE <- mean((prediction_rf2 - testing$wins_playoff)^2)
+rf2_RMSE <-  sqrt(rf2_MSE)
+```
+
+#### 10.1.3 rf3
+
+try default mtry
+
+```{r}
+OOB_RMSE_ranger <- vector(mode = "numeric", length = 100)
+
+for(i in 1:length(OOB_RMSE_ranger)){
+  optimal_ranger <- ranger(
+    formula         = wins_playoff ~ ., 
+    data            = training, 
+    num.trees       = 500,
+    min.node.size   = 8,
+    sample.fraction = 0.55,
+    importance      = 'impurity'
+  )
+
+  OOB_RMSE_ranger[i] <- sqrt(optimal_ranger$prediction.error)
+}
+
+hist(OOB_RMSE_ranger, breaks = 20)
+```
+
+
+```{r}
+rf3 <- ranger(
+  formula = wins_playoff ~ .,
+    data = training,
+    num.trees = 500,
+    min.node.size   = 8,
+    sample.fraction = 0.55,
+    seed = 123
+)
+save(rf3, file = "model.Rdata.rf3")
+```
+
+```{r}
+load(file = "model.Rdata.rf3")
+```
+
+rf3 prediction
+
+```{r}
+prediction_rf3 <- predict(rf3, testing[,-12])
+prediction_rf3 <- prediction_rf3$predictions
+rf3_MSE <- mean((prediction_rf3 - testing$wins_playoff)^2)
+rf3_RMSE <-  sqrt(rf3_MSE)
+```
+
+### 10.2 Randomforest with training data in 2003 to 2022
+
+The reason I pick this range is because the playoff structure was changed in 2004 so that an NBA Championship must consist of winning 4 best of 7 game series since then.
+
+```{r}
+data = data %>% filter(!year %in% c(2000:2002))
+training2 = data %>% filter(!year %in% 2022)
+#I don't need the "year" column when building models
+training2 <- training2[,-14]
+dim(training2)
+```
+
+#### 10.2.1 rf4
+
+```{r}
+rf4 <- ranger(
+  formula = wins_playoff ~ .,
+    data = training2,
+    num.trees = 500,
+    mtry = 7,
+    min.node.size = 8,
+    sample.fraction = 0.55,
+    seed = 123
+)
+save(rf4, file = "model.Rdata.rf4")
+```
+
+```{r}
+load(file = "model.Rdata.rf4")
+```
+
+rf4 prediction
+
+```{r}
+prediction_rf4 <- predict(rf4, testing[,-12])
+prediction_rf4 <- prediction_rf4$predictions
+rf4_MSE <- mean((prediction_rf4 - testing$wins_playoff)^2)
+rf4_RMSE <-  sqrt(rf4_MSE)
+```
+
+### 10.3 Randomforest with training data in 2014 to 2022
+
+The reason I pick this range is because teams focus more on 3-points field goals since then. 
+
+```{r}
+data = data %>% filter(!year %in% c(2000:2013))
+training3 = data %>% filter(!year %in% 2022)
+#I don't need the "year" column when building models
+training3 <- training3[,-14]
+dim(training3)
+
+```
+
+#### 10.3.1 rf5
+
+```{r}
+rf5 <- ranger(
+  formula = wins_playoff ~ .,
+    data = training3,
+    num.trees = 500,
+    mtry = 7,
+    min.node.size = 8,
+    sample.fraction = 0.55,
+    seed = 123
+)
+save(rf5, file = "model.Rdata.rf5")
+```
+
+```{r}
+load(file = "model.Rdata.rf5")
+```
+
+rf5 prediction
+
+```{r}
+prediction_rf5 <- predict(rf5, testing[,-12])
+prediction_rf5 <- prediction_rf5$predictions
+rf5_MSE <- mean((prediction_rf5 - testing$wins_playoff)^2)
+rf5_RMSE <-  sqrt(rf5_MSE)
+```
+
+### 10.4 XGBoost with training data in 2003 to 2022
+
+```{r}
+# variable names
+features <- setdiff(names(training2), "wins_playoff")
+# Create the treatment plan from the training data
+treatplan <- vtreat::designTreatmentsZ(training2, features, verbose = FALSE)
+
+# Get the "clean" variable names from the scoreFrame
+new_vars <- treatplan %>%
+  magrittr::use_series(scoreFrame) %>%        
+  dplyr::filter(code %in% c("clean", "lev")) %>% 
+  magrittr::use_series(varName)     
+
+# Prepare the training data
+features_train <- vtreat::prepare(treatplan, training2, varRestriction = new_vars) %>% as.matrix()
+response_train <- training2$wins_playoff
+
+# Prepare the test data
+features_test <- vtreat::prepare(treatplan, testing, varRestriction = new_vars) %>% as.matrix()
+response_test <- testing$wins_playoff
+
+dim(features_train)
+dim(features_test)
+```
+
+* xgboost cv 
+
+To find the best nrounds
+
+```{r}
+set.seed(123)
+xgb.fit1 <- xgb.cv(
+  data = features_train,
+  label = response_train,
+  nrounds = 1000,
+  nfold = 10,
+  objective = 'reg:squarederror',  # for regression models
+  verbose = 0  # silent,不要顯示詳細資訊
+)
+```
+
+```{r}
+print(xgb.fit1,verbose = TRUE)
+xgb.fit1$evaluation_log %>%
+  dplyr::summarise(
+    ntrees.train = which(train_rmse_mean == min(train_rmse_mean))[1],
+    rmse.train   = min(train_rmse_mean),
+    ntrees.test  = which(test_rmse_mean == min(test_rmse_mean))[1],
+    rmse.test   = min(test_rmse_mean)
+  )
+```
+
+The training error keeps decreasing and approaches zero (0.00015) at about 424 trees. However, the cross-validation error reaches the minimum RMSE (3.58) around 9 trees.
+
+The detailed xgboost model iteration information is drawn as follows, the red line represents the training error, and the blue line represents the cross-validation error.
+
+```{r}
+# plot error vs number trees
+ggplot(xgb.fit1$evaluation_log) +
+  geom_line(aes(iter, train_rmse_mean), color = "red") +
+  geom_line(aes(iter, test_rmse_mean), color = "blue")
+```
+
+Tuning
+
+```{r}
+# create hyperparameter grid
+hyper_grid <- expand.grid(
+  eta = c(.01, .05, .1, .3),
+  max_depth = c(1:7),
+  min_child_weight = c(1:7),
+  subsample = c(.65,.7,.8, 1), 
+  colsample_bytree = c(.5,.6,.7,.8,.9, 1),
+  optimal_trees = 0,               # a place to dump results
+  min_RMSE = 0                     # a place to dump results
+)
+
+nrow(hyper_grid)
+```
+
+```{r eval=FALSE}
+# grid search 
+for(i in 1:nrow(hyper_grid)) {
+
+  # create parameter list
+  params <- list(
+    eta = hyper_grid$eta[i],
+    max_depth = hyper_grid$max_depth[i],
+    min_child_weight = hyper_grid$min_child_weight[i],
+    subsample = hyper_grid$subsample[i],
+    colsample_bytree = hyper_grid$colsample_bytree[i]
+  )
+
+  # reproducibility
+  set.seed(123)
+
+  # train model
+  xgb.tune <- xgb.cv(
+    params = params,
+    data = features_train,
+    label = response_train,
+    nrounds = 500,
+    nfold = 10,
+    objective = 'reg:squarederror',  # for regression models
+    verbose = 0,               # silent,
+    early_stopping_rounds = 10 # stop if no improvement for 10 consecutive trees
+  )
+
+  # add min training error and trees to grid
+  hyper_grid$optimal_trees[i] <- which.min(xgb.tune$evaluation_log$test_rmse_mean)
+  hyper_grid$min_RMSE[i] <- min(xgb.tune$evaluation_log$test_rmse_mean)
+}
+
+save(xgb.tune, file = "model.Rdata.xgb.tune")
+save(hyper_grid, file = "model.Rdata.xgb_hyper_grid")
+```
+
+```{r}
+load(file = "model.Rdata.xgb.tune")
+load(file = "model.Rdata.xgb_hyper_grid")
+```
+
+```{r}
+hyper_grid %>%
+  dplyr::arrange(min_RMSE) %>%
+  head(10)
+```
+
+* eta = 0.10
+
+* max_depth = 5
+
+* min_child_weight = 6
+
+* subsample = 0.7
+
+* colsample_bytree = 1.0
+
+```{r}
+# parameter list
+params <- list(
+  eta = 0.1,
+  max_depth = 5,
+  min_child_weight = 6,
+  subsample = 0.7,
+  colsample_bytree = 1.0
+)
+
+# train final model
+xgb.fit.final <- xgboost(
+  params = params,
+  data = features_train,
+  label = response_train,
+  nrounds = 424, #From xgb.cv earlier
+  objective = 'reg:squarederror',
+  verbose = 0
+)
+save(xgb.fit.final, file = "model.Rdata.xgb.fit.final")
+```
+
+```{r}
+load(file = "model.Rdata.xgb.fit.final")
+```
+
+Variable importance
+
+```{r}
+# create importance matrix
+importance_matrix <- xgb.importance(model = xgb.fit.final)
+
+importance_matrix
+```
+
+```{r}
+# variable importance plot
+xgb.plot.importance(importance_matrix, top_n = 10, measure = "Gain")
+
+# variable importance plot using 'cover'
+xgb.plot.importance(importance_matrix, top_n = 10, measure = "Cover")
+```
+
+xgb.fit.final prediction
+
+```{r}
+# predict values for test data
+prediction_xgbfinal <- predict(xgb.fit.final, features_test)
+
+xgbfinal_MSE <- mean((prediction_xgbfinal - testing$wins_playoff)^2)
+xgbfinal_RMSE <- sqrt(xgbfinal_MSE)
+```
+
+### 10.5 XGBoost with training data in 2014 to 2022
+
+```{r}
+# variable names
+features <- setdiff(names(training3), "wins_playoff")
+# Create the treatment plan from the training data
+treatplan <- vtreat::designTreatmentsZ(training3, features, verbose = FALSE)
+
+# Get the "clean" variable names from the scoreFrame
+new_vars <- treatplan %>%
+  magrittr::use_series(scoreFrame) %>%        
+  dplyr::filter(code %in% c("clean", "lev")) %>% 
+  magrittr::use_series(varName)     
+
+# Prepare the training data
+features_train2 <- vtreat::prepare(treatplan, training3, varRestriction = new_vars) %>% as.matrix()
+response_train2 <- training3$wins_playoff
+
+dim(features_train2)
+```
+
+```{r}
+# parameter list
+params <- list(
+  eta = 0.1,
+  max_depth = 5,
+  min_child_weight = 6,
+  subsample = 0.7,
+  colsample_bytree = 1.0
+)
+
+# train final model
+xgb.fit.final2 <- xgboost(
+  params = params,
+  data = features_train2,
+  label = response_train2,
+  nrounds = 424, #From xgb.cv earlier
+  objective = 'reg:squarederror',
+  verbose = 0
+)
+save(xgb.fit.final2, file = "model.Rdata.xgb.fit.final2")
+```
+
+```{r}
+load(file = "model.Rdata.xgb.fit.final2")
+```
+
+xgb.fit.final2 prediction
+
+```{r}
+# predict values for test data
+prediction_xgbfinal2 <- predict(xgb.fit.final2, features_test)
+
+xgbfinal2_MSE <- mean((prediction_xgbfinal2 - testing$wins_playoff)^2)
+xgbfinal2_RMSE <- sqrt(xgbfinal2_MSE)
+```
+
+## 11. Error Analysis
+
+```{r}
+algorithm <- c("RF", "RF", "RF", "RF", "RF", "XGB", "XGB")
+models <- c("rf1", "rf2", "rf3", "rf4", "rf5", "xgb.fit.final1", "xgb.fit.final2")
+train_data_year <- c("2000-2022", "2000-2022", "2000-2022", "2003-2022", "2014-2022", "2003-2022", "2014-2022")
+RMSE <- c(rf1_RMSE, rf2_RMSE, rf3_RMSE, rf4_RMSE, rf5_RMSE, xgbfinal_RMSE, xgbfinal2_RMSE)
+
+models_RMSE <- data.frame(algorithm, models, train_data_year, RMSE)
+models_RMSE %>% arrange(RMSE)
+```
+
+We can see that Random Forest perform better than XGBoost in this case. I will still use the best one of each algorithm to predict the NBA 2023 champion by giving weight. 
+
+## 12. NBA 2023 Champlion Prediction
+
+```{r}
+#predict by rf5
+rf5_nba2023 <- predict(rf5, nba_2023)
+rf5_nba2023 <- rf5_nba2023$predictions
+
+#predict by xgb.fit.final
+features_nba2023 <- vtreat::prepare(treatplan, nba_2023[,-12], varRestriction = new_vars) %>% as.matrix()
+xgb_nba2023 <- predict(xgb.fit.final, features_nba2023)
+
+#Combine the predictions to the nba_2023 
+nba_2023$wins_prediction_RF = rf5_nba2023
+nba_2023$wins_prediction_XGB = xgb_nba2023
+
+#Filter teams that made to the playoff in 2023
+nba_2023 <- tibble::rownames_to_column(nba_2023, "Team")
+nba_2023_champion <- nba_2023 %>% 
+  select(Team, wins_prediction_RF, wins_prediction_XGB) %>% 
+  filter(Team %in% c("Denver Nuggets", "Minnesota Timberwolves", "Phoenix Suns", "Los Angeles Clippers", "Sacramento Kings", "Golden State Warriors", "Memphis Grizzlies", "Los Angeles Lakers", "Milwaukee Bucks", "Miami Heat", "Cleveland Cavaliers", "New York Knicks", "Philadelphia 76ers", "Brooklyn Nets", "Boston Celtics", "Atlanta Hawks"))
+
+#Giving weight 0.7 to the RF prediction and 0.3 to the XGB prediction
+nba_2023_champion <- nba_2023_champion %>% 
+  mutate(wins_prediction_final = 0.7*wins_prediction_RF + 0.3*wins_prediction_XGB)
+```
+
+```{r}
+nba_2023_champion %>% 
+  select(Team, wins_prediction_final) %>% 
+  arrange(desc(wins_prediction_final))
+```
+
+## 13. Conclusion
+
+**According to my prediction, the 2023 NBA championship will be the Boston Celtics**
+
+EDA : 
+
+1. Not surprisingly, playoff teams have a much higher field goal percentage than non-playoff teams on average.
+
+2. We can see that both 3-Point Field Goals and 3-Point Field Goals Attempt have increased over time, and teams that make it to the playoffs tend to make and attempt more 3-point shots during the regular season compared to teams that do not make the playoffs. Besides, Several peaks in the 3-Point Field Goals Percentage chart were created by the Golden State Warriors, including the regular season before the Warriors won the championship in 15, 17, 18 and 22 years. Insane Field goal percentage!
+
+3. Interestingly, the number of 2-point attempts by teams decreased significantly over time, and teams that made the playoffs took fewer 2-point shots than teams that did not make the playoffs. This should be because strong teams focus their offense on shooting three-pointers. The lowest point for two-point field goal attempts among championship teams was the Warriors' performance during the 2021 season.
+
+Possible future improvements : 
+
+1. Take the number of star players into consideration
+
+2. According to the schedule, the winning percentage when the two teams meet is taken as the ouput, and when it is calculated all the way to the championship game, the team with the highest winning percentage between the two teams is the champion
